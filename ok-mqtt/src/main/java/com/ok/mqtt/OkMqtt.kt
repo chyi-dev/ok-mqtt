@@ -25,17 +25,17 @@ import org.eclipse.paho.client.mqttv3.MqttMessage
  * 6，退订Topic，MqttManager.getInstance().unsubscribe(topic)，建议在页面消失时调用。
  * 7，关闭Mqtt，MqttManager.getInstance().close()，建议在MainActivity的onDestroy中调用或应用退出时。
  */
-class MqttManager {
+class OkMqtt {
 
     companion object {
         @Volatile
-        private var instance: MqttManager? = null
+        private var instance: OkMqtt? = null
 
-        fun getInstance(): MqttManager {
+        fun getInstance(): OkMqtt {
             return instance ?: synchronized(this) {
-                val mqttManager = MqttManager()
-                instance = mqttManager
-                mqttManager
+                val okMqtt = OkMqtt()
+                instance = okMqtt
+                okMqtt
             }
         }
     }
