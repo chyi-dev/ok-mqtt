@@ -1,4 +1,4 @@
-package com.ok.mqtt
+package com.ok.mqtt.demo
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4

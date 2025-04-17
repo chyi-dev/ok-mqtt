@@ -18,12 +18,12 @@ import org.eclipse.paho.client.mqttv3.MqttMessage
  * @date 2025/2/25 15:04
  * 使用流程：
  * 1，配置MqttConfig，设置账号和密码，MqttConfig().create()。
- * 2，初始化Mqtt客户端，MqttManager.getInstance().init(activity, MqttConfig)，建议在Application的onCreate或MainActivity的onCreate中调用。
- * 3，连接Mqtt客户端，MqttManager.getInstance().connect()，必须在init方法后调用。
- * 4，订阅Topic，MqttManager.getInstance().subscribe(topic, subscriber)，并在subscriber中处理消息的回调。
- * 5，发布消息，MqttManager.getInstance().publishMessage(topic,content)。
- * 6，退订Topic，MqttManager.getInstance().unsubscribe(topic)，建议在页面消失时调用。
- * 7，关闭Mqtt，MqttManager.getInstance().close()，建议在MainActivity的onDestroy中调用或应用退出时。
+ * 2，初始化Mqtt客户端，OkMqtt.getInstance().init(activity, MqttConfig)，建议在Application的onCreate或MainActivity的onCreate中调用。
+ * 3，连接Mqtt客户端，OkMqtt.getInstance().connect()，必须在init方法后调用。
+ * 4，订阅Topic，OkMqtt.getInstance().subscribe(topic, subscriber)，并在subscriber中处理消息的回调。
+ * 5，发布消息，OkMqtt.getInstance().publishMessage(topic,content)。
+ * 6，退订Topic，OkMqtt.getInstance().unsubscribe(topic)，建议在页面消失时调用。
+ * 7，关闭Mqtt，OkMqtt.getInstance().close()，建议在MainActivity的onDestroy中调用或应用退出时。
  */
 class OkMqtt {
 
@@ -50,6 +50,9 @@ class OkMqtt {
 
     /**
      * 初始化Mqtt客户端，建议在MainActivity的onCreate中调用
+     * @param context Context
+     * @param config MqttConfig
+     * @throws Exception
      */
     fun init(context: Context, config: MqttConfig) {
         mConfig = config
@@ -124,7 +127,10 @@ class OkMqtt {
     }
 
     /**
-     * 订阅一个话题
+     * 订阅
+     * @param topic String
+     * @param qos Int
+     * @param callback OnSubscriberListener?
      */
     fun subscribe(topic: String, qos: Int = 1, callback: OnSubscriberListener? = null) {
         if (mqttClient == null) {
@@ -150,6 +156,9 @@ class OkMqtt {
 
     /**
      * 订阅实现
+     * @param topic String
+     * @param qos Int
+     * @param callback OnSubscriberListener?
      */
     private fun performSubscribe(topic: String, qos: Int, callback: OnSubscriberListener? = null) {
         try {
@@ -174,7 +183,8 @@ class OkMqtt {
     }
 
     /**
-     * 退订某一个topic
+     * 退订topic
+     * @param topic String
      */
     fun unsubscribe(topic: String) {
         subscribedTopics.remove(topic)
@@ -192,6 +202,8 @@ class OkMqtt {
 
     /**
      * 发布消息
+     * @param topic String
+     * @param content String
      */
     fun publishMessage(topic: String, content: String) {
         if (mqttClient == null) {
@@ -210,7 +222,11 @@ class OkMqtt {
         }
     }
 
-
+    /**
+     * 发布消息封装
+     * @param topic String
+     * @param content String
+     */
     private fun performPublishMessage(topic: String, content: String) {
         try {
             val message = MqttMessage()

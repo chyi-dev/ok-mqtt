@@ -65,7 +65,7 @@ class MqttConfig private constructor() {
         this.password = pass.toCharArray()
     }
 
-    // 配置SSL（即时校验）
+    // 配置SSL
     fun sslConfig(block: SSLConfig.() -> Unit) = apply {
         require(serverUri.startsWith("ssl://")) { "SSL配置需要服务器地址以ssl://开头" }
         sslConfig = SSLConfig().apply(block).also {
@@ -73,7 +73,7 @@ class MqttConfig private constructor() {
         }
     }
 
-    // 配置遗嘱消息（即时校验）
+    // 配置遗嘱消息
     fun lastWill(block: LastWill.() -> Unit) = apply {
         lastWill = LastWill().apply(block).also {
             it.validate()

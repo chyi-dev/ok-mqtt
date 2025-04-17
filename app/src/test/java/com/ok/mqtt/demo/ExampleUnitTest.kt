@@ -1,4 +1,4 @@
-package com.ok.mqtt
+package com.ok.mqtt.demo
 
 import org.junit.Test
 
