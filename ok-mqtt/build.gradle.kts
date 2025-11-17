@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
     id("maven-publish")
 }
 
@@ -27,6 +28,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+        
+        ksp {
+            arg("room.schemaLocation", "$projectDir/schemas")
+        }
     }
 
     buildTypes {
@@ -49,9 +54,20 @@ android {
 
 dependencies {
 
-    implementation(libs.mqtt.client)
+    api(libs.mqtt.client)
     implementation(libs.androidx.appcompat)
-    implementation(libs.mqtt.service)
+    
+    // Room database
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+    
+    // WorkManager for ping scheduling
+    implementation(libs.work.runtime.ktx)
+    
+    // Coroutines
+    implementation(libs.coroutines)
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
