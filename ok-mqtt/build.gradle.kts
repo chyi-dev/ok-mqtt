@@ -55,8 +55,6 @@ android {
 dependencies {
 
     api(libs.mqtt.client)
-    implementation(libs.androidx.appcompat)
-    
     // Room database
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
