@@ -1,0 +1,5 @@
+-keepclassmembernames class io.netty.** { *; }
+-keepclassmembers class org.jctools.** { *; }
+-dontwarn io.netty.**
+-dontwarn org.jctools.**
+-dontwarn com.hivemq.client.**

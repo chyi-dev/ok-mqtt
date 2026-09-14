@@ -1,17 +1,15 @@
 package com.ok.mqtt
 
-enum class QoS(val value: Int) {
-
+/**
+ * Quality of Service levels.
+ */
+enum class Qos(val code: Int) {
     AtMostOnce(0),
     AtLeastOnce(1),
     ExactlyOnce(2);
 
     companion object {
-        @JvmStatic
-        fun valueOf(qos: Int): QoS {
-            return entries[qos]
-        }
+        fun from(code: Int): Qos = entries.firstOrNull { it.code == code }
+            ?: throw IllegalArgumentException("Invalid QoS: $code")
     }
-
 }
-
