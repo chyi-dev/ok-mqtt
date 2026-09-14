@@ -6,21 +6,23 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import com.blankj.utilcode.util.TimeUtils
-import com.ok.mqtt.Auth
-import com.ok.mqtt.MqttState
-import com.ok.mqtt.MqttVersion
-import com.ok.mqtt.OkMqttClient
-import com.ok.mqtt.OkMqttConfig
-import com.ok.mqtt.Qos
-import com.ok.mqtt.SessionOptions
-import com.ok.mqtt.keepalive.KeepaliveConfig
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
+import com.ok.mqtt.Ack
+import com.ok.mqtt.MqttAndroidClient
+import com.ok.mqtt.MqttTraceHandler
+import org.eclipse.paho.client.mqttv3.IMqttActionListener
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
+import org.eclipse.paho.client.mqttv3.IMqttToken
+import org.eclipse.paho.client.mqttv3.MqttCallback
+import org.eclipse.paho.client.mqttv3.MqttCallbackExtended
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions
+import org.eclipse.paho.client.mqttv3.MqttException
+import org.eclipse.paho.client.mqttv3.MqttMessage
 
 /**
- * Demo / scenario panel for ok-mqtt (HiveMQ-backed).
+ * MQTT 客户端示例
+ *
+ * @author Leyi
+ * @date 2025/4/17 10:10
  */
 class MainActivity : AppCompatActivity() {
 
@@ -33,29 +35,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etUser: EditText
     private lateinit var etPwd: EditText
     private lateinit var etClientId: EditText
-    private lateinit var etTopic: EditText
-    private lateinit var etPayload: EditText
     private lateinit var btnConnect: TextView
-    private lateinit var btnSubscribe: TextView
-    private lateinit var btnPublish: TextView
-    private lateinit var btnVersion: TextView
-    private lateinit var btnFgs: TextView
-    private lateinit var tvState: TextView
-    private lateinit var tvLog: TextView
+    private lateinit var btnSubmit: TextView
 
-    private var mqttClient: OkMqttClient? = null
-    private var mqttVersion = MqttVersion.V5
-    private var enableFgs = false
-    private val logLines = ArrayDeque<String>()
+    private var mqttClient: MqttAndroidClient? = null
+    private var isConnected = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
         initViews()
         setupClickListeners()
-        updateVersionLabel()
-        updateFgsLabel()
-        appendLog("Ready. Protocol=${mqttVersion.name}")
     }
 
     private fun initViews() {
@@ -64,145 +55,271 @@ class MainActivity : AppCompatActivity() {
         etUser = findViewById(R.id.et_user)
         etPwd = findViewById(R.id.et_pwd)
         etClientId = findViewById(R.id.et_client_id)
-        etTopic = findViewById(R.id.et_topic)
-        etPayload = findViewById(R.id.et_payload)
         btnConnect = findViewById(R.id.btn_connect)
-        btnSubscribe = findViewById(R.id.btn_submit)
-        btnPublish = findViewById(R.id.btn_publish)
-        btnVersion = findViewById(R.id.btn_version)
-        btnFgs = findViewById(R.id.btn_fgs)
-        tvState = findViewById(R.id.tv_state)
-        tvLog = findViewById(R.id.tv_log)
+        btnSubmit = findViewById(R.id.btn_submit)
 
-        etUrl.setText("8.154.23.241")
-        etPort.setText("1883")
-        etClientId.setText("client_0a4e5cbf789819cb")
-        etUser.setText("0a4e5cbf789819cb")
-        etPwd.setText("8c253fb02f3d1db89190b3a730e2931a")
-        etTopic.setText("0a4e5cbf789819cbdevState")
-        etPayload.setText("{\"device\":\"0a4e5cbf789819cb\",\"time\":\"2026-09-14 11:37:42\",\"timestamp\":\"1789357062273\",\"today\":\"316.128 KB\"}")
+        // 设置默认值（可选）
+        etUrl.setText("tcp://ops.coffeeji.com")
+        etPort.setText("3000")
+        etUser.setText("test")
+        etPwd.setText("test")
+        etClientId.setText("android_client_${System.currentTimeMillis()}")
     }
 
     private fun setupClickListeners() {
         btnConnect.setOnClickListener {
-            if (mqttClient != null && mqttClient!!.state.value is MqttState.Connected) {
-                mqttClient?.disconnect()
+            if (isConnected) {
+                disconnect()
             } else {
-                connectMqtt()
+                connect()
             }
         }
-        btnSubscribe.setOnClickListener {
-            val topic = etTopic.text.toString().trim()
-            if (topic.isEmpty()) {
-                toast("请输入主题")
-                return@setOnClickListener
+
+        btnSubmit.setOnClickListener {
+            if (isConnected) {
+                subscribeToTopic()
+            } else {
+                Toast.makeText(this, "请先连接MQTT服务器", Toast.LENGTH_SHORT).show()
             }
-            mqttClient?.subscribe(topic, Qos.AtLeastOnce)
-            appendLog("SUBSCRIBE $topic")
-        }
-        btnPublish.setOnClickListener {
-            val topic = etTopic.text.toString().trim()
-            val payload = etPayload.text.toString()
-            mqttClient?.publish(topic, payload, Qos.AtLeastOnce)
-            appendLog("PUBLISH $topic → $payload")
-        }
-        btnVersion.setOnClickListener {
-            mqttVersion = if (mqttVersion == MqttVersion.V5) MqttVersion.V3_1_1 else MqttVersion.V5
-            updateVersionLabel()
-            appendLog("Protocol switched to ${mqttVersion.name} (reconnect to apply)")
-        }
-        btnFgs.setOnClickListener {
-            enableFgs = !enableFgs
-            updateFgsLabel()
-            appendLog("FGS=${enableFgs} (reconnect to apply)")
         }
     }
 
-    private fun connectMqtt() {
-        mqttClient?.close()
-        val host = etUrl.text.toString().trim()
-        val port = etPort.text.toString().trim().ifEmpty { "1883" }
-        val clientId = etClientId.text.toString().trim().ifEmpty { "ok-mqtt-demo" }
+    private fun connect() {
+        val url = etUrl.text.toString().trim()
+        val port = etPort.text.toString().trim()
         val user = etUser.text.toString().trim()
-        val pwd = etPwd.text.toString()
+        val pwd = etPwd.text.toString().trim()
+        val clientId = etClientId.text.toString().trim()
 
-        val auth = if (user.isNotEmpty()) {
-            Auth.Simple(user, pwd.toByteArray(Charsets.UTF_8))
-        } else {
-            Auth.None
+        if (url.isEmpty()) {
+            Toast.makeText(this, "请输入服务器地址", Toast.LENGTH_SHORT).show()
+            return
         }
 
-        val config = OkMqttConfig(
-            serverUri = "tcp://$host:$port",
-            clientId = clientId,
-            version = mqttVersion,
-            auth = auth,
-            session = SessionOptions(cleanStart = true, keepAliveSeconds = 60),
-            keepalive = KeepaliveConfig(
-                enableForegroundService = enableFgs,
-                enableAlarm = true,
-                enableLifecycle = true,
-                enableWorkManager = false,
-                notificationTitle = "ok-mqtt demo",
-                notificationText = "MQTT keepalive active"
+        if (clientId.isEmpty()) {
+            Toast.makeText(this, "请输入ClientId", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            // 构建完整的服务器URI
+            val serverURI = if (url.startsWith("tcp://") || url.startsWith("ssl://")) {
+                "$url:$port"
+            } else {
+                "tcp://$url:$port"
+            }
+
+            // 创建 MQTT 客户端
+            mqttClient = MqttAndroidClient(
+                applicationContext,
+                serverURI,
+                clientId,
+                Ack.AUTO_ACK
             )
-        )
 
-        val client = OkMqttClient(applicationContext, config)
-        mqttClient = client
-        appendLog("Connecting ${config.serverUri} as $clientId [${mqttVersion.name}]")
-
-        lifecycleScope.launch {
-            client.state.collectLatest { state ->
-                runOnUiThread {
-                    tvState.text = "状态: ${stateLabel(state)}"
-                    btnConnect.text = if (state is MqttState.Connected) "断开" else "连接"
-                    appendLog("STATE → ${stateLabel(state)}")
+            // 设置回调
+            mqttClient?.setCallback(object : MqttCallbackExtended {
+                override fun connectComplete(reconnect: Boolean, serverURI: String) {
+                    runOnUiThread {
+                        Log.d(TAG, "连接完成: reconnect=$reconnect, serverURI=$serverURI")
+                        Toast.makeText(this@MainActivity, "连接成功", Toast.LENGTH_SHORT).show()
+                    }
                 }
+
+                override fun connectionLost(cause: Throwable?) {
+                    runOnUiThread {
+                        Log.e(TAG, "连接丢失", cause)
+                        isConnected = false
+                        updateConnectButton()
+                        Toast.makeText(this@MainActivity, "连接丢失: ${cause?.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                override fun messageArrived(topic: String, message: MqttMessage) {
+                    runOnUiThread {
+                        val payload = String(message.payload)
+                        Log.d(TAG, "收到消息 - Topic: $topic, Payload: $payload")
+                        Toast.makeText(
+                            this@MainActivity,
+                            "收到消息\nTopic: $topic\n内容: $payload",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+
+                override fun deliveryComplete(token: IMqttDeliveryToken) {
+                    Log.d(TAG, "消息发送完成")
+                }
+            })
+
+            // 设置跟踪回调（可选）
+            mqttClient?.setTraceCallback(object : MqttTraceHandler {
+                override fun traceDebug(message: String?) {
+                    Log.d(TAG, "Trace Debug: $message")
+                }
+
+                override fun traceError(message: String?) {
+                    Log.e(TAG, "Trace Error: $message")
+                }
+
+                override fun traceException(message: String?, e: Exception?) {
+                    Log.e(TAG, "Trace Exception: $message", e)
+                }
+            })
+
+            // 配置连接选项
+            val connectOptions = MqttConnectOptions()
+            connectOptions.isCleanSession = true
+            connectOptions.isAutomaticReconnect = true
+            connectOptions.connectionTimeout = 30
+            connectOptions.keepAliveInterval = 60
+
+            // 设置用户名和密码（如果有）
+            if (user.isNotEmpty()) {
+                connectOptions.userName = user
             }
-        }
-        lifecycleScope.launch {
-            client.incoming.collectLatest { msg ->
-                val body = msg.payload.toString(Charsets.UTF_8)
-                appendLog("MSG ${msg.topic}: $body")
+            if (pwd.isNotEmpty()) {
+                connectOptions.password = pwd.toCharArray()
             }
+
+            // 连接
+            btnConnect.isEnabled = false
+            btnConnect.text = "连接中..."
+            
+            mqttClient?.connect(connectOptions, null, object : IMqttActionListener {
+                override fun onSuccess(asyncActionToken: IMqttToken) {
+                    runOnUiThread {
+                        Log.d(TAG, "连接成功")
+                        isConnected = true
+                        updateConnectButton()
+                        Toast.makeText(this@MainActivity, "连接成功", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                    runOnUiThread {
+                        Log.e(TAG, "连接失败", exception)
+                        isConnected = false
+                        updateConnectButton()
+                        Toast.makeText(
+                            this@MainActivity,
+                            "连接失败: ${exception?.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            })
+
+        } catch (e: Exception) {
+            Log.e(TAG, "创建MQTT客户端失败", e)
+            Toast.makeText(this, "创建客户端失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            updateConnectButton()
         }
-        client.connect()
     }
 
-    private fun stateLabel(state: MqttState): String = when (state) {
-        is MqttState.Idle -> "Idle"
-        is MqttState.Connecting -> "Connecting"
-        is MqttState.Connected -> "Connected (reconnect=${state.reconnect})"
-        is MqttState.Reconnecting -> "Reconnecting #${state.attempt} in ${state.nextDelayMs}ms"
-        is MqttState.Failed -> "Failed: ${state.cause}"
-        is MqttState.Disconnected -> "Disconnected"
-    }
+    private fun disconnect() {
+        try {
+            mqttClient?.disconnect(null, object : IMqttActionListener {
+                override fun onSuccess(asyncActionToken: IMqttToken) {
+                    runOnUiThread {
+                        Log.d(TAG, "断开连接成功")
+                        isConnected = false
+                        updateConnectButton()
+                        Toast.makeText(this@MainActivity, "已断开连接", Toast.LENGTH_SHORT).show()
+                    }
+                }
 
-    private fun updateVersionLabel() {
-        btnVersion.text = "协议: ${mqttVersion.name}"
-    }
-
-    private fun updateFgsLabel() {
-        btnFgs.text = if (enableFgs) "FGS: ON" else "FGS: OFF"
-    }
-
-    private fun appendLog(line: String) {
-        Log.d(TAG, line)
-        logLines.addFirst("${TimeUtils.getNowString()}: $line")
-        while (logLines.size > 40) logLines.removeLast()
-        runOnUiThread {
-            tvLog.text = logLines.joinToString("\n")
+                override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                    runOnUiThread {
+                        Log.e(TAG, "断开连接失败", exception)
+                        Toast.makeText(
+                            this@MainActivity,
+                            "断开连接失败: ${exception?.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "断开连接异常", e)
         }
     }
 
-    private fun toast(msg: String) {
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    private fun subscribeToTopic() {
+        // 这里可以添加一个对话框让用户输入要订阅的主题
+        // 为了示例，我们订阅一个默认主题
+        val topic = "test/topic" // 可以改为从输入框获取
+        
+        try {
+            mqttClient?.subscribe(topic, 1, null, object : IMqttActionListener {
+                override fun onSuccess(asyncActionToken: IMqttToken) {
+                    runOnUiThread {
+                        Log.d(TAG, "订阅成功: $topic")
+                        Toast.makeText(this@MainActivity, "订阅成功: $topic", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                    runOnUiThread {
+                        Log.e(TAG, "订阅失败: $topic", exception)
+                        Toast.makeText(
+                            this@MainActivity,
+                            "订阅失败: ${exception?.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            })
+        } catch (e: MqttException) {
+            Log.e(TAG, "订阅异常", e)
+            Toast.makeText(this, "订阅异常: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun publishMessage(topic: String, message: String, qos: Int = 1) {
+        try {
+            val mqttMessage = MqttMessage(message.toByteArray())
+            mqttMessage.qos = qos
+            mqttMessage.isRetained = false
+
+            mqttClient?.publish(topic, mqttMessage, null, object : IMqttActionListener {
+                override fun onSuccess(asyncActionToken: IMqttToken) {
+                    runOnUiThread {
+                        Log.d(TAG, "发布成功: $topic")
+                        Toast.makeText(this@MainActivity, "发布成功", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                    runOnUiThread {
+                        Log.e(TAG, "发布失败: $topic", exception)
+                        Toast.makeText(
+                            this@MainActivity,
+                            "发布失败: ${exception?.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            })
+        } catch (e: MqttException) {
+            Log.e(TAG, "发布异常", e)
+            Toast.makeText(this, "发布异常: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateConnectButton() {
+        btnConnect.isEnabled = true
+        btnConnect.text = if (isConnected) "断开连接" else "连接"
     }
 
     override fun onDestroy() {
-        mqttClient?.close()
-        mqttClient = null
         super.onDestroy()
+        // 清理资源
+        try {
+            mqttClient?.unregisterResources()
+            mqttClient?.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "清理MQTT客户端失败", e)
+        }
     }
 }

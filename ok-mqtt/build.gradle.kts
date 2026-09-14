@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
     id("maven-publish")
 }
 
@@ -9,7 +10,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "com.chyi-dev"
             artifactId = "ok-mqtt"
-            version = "2.0.0"
+            version = "1.0.0"
 
             afterEvaluate {
                 from(components["release"])
@@ -23,10 +24,14 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        minSdk = 24
+        minSdk = 21
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+        
+        ksp {
+            arg("room.schemaLocation", "$projectDir/schemas")
+        }
     }
 
     buildTypes {
@@ -45,25 +50,23 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
-    packaging {
-        resources {
-            excludes += listOf(
-                "META-INF/INDEX.LIST",
-                "META-INF/io.netty.versions.properties"
-            )
-        }
-    }
 }
 
 dependencies {
-    implementation(libs.hivemq.mqtt.client)
-    implementation(libs.coroutines)
-    implementation(libs.lifecycle.process)
-    implementation(libs.work.runtime.ktx)
-    implementation(libs.androidx.core.ktx)
 
+    api(libs.mqtt.client)
+    // Room database
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+    
+    // WorkManager for ping scheduling
+    implementation(libs.work.runtime.ktx)
+    
+    // Coroutines
+    implementation(libs.coroutines)
+    
     testImplementation(libs.junit)
-    testImplementation(libs.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

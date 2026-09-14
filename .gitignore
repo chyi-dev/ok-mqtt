@@ -1,10 +1,5 @@
 *.iml
 .gradle
-.gradle-dist/
-.gradle-home/
-verify-out.txt
-build-log.txt
-compile-out*.txt
 /local.properties
 /.idea/caches
 /.idea/libraries

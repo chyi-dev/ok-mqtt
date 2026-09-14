@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "com.ok.mqtt.demo"
-        minSdk = 24
+        minSdk = 21
         targetSdk = 34
         versionCode = 1
-        versionName = "2.0"
+        versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -36,13 +36,15 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+//    buildFeatures {
+//        compose = true
+//    }
+//    composeOptions {
+//        kotlinCompilerExtensionVersion = "1.5.1"
+//    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
-            excludes += listOf(
-                "META-INF/INDEX.LIST",
-                "META-INF/io.netty.versions.properties"
-            )
         }
     }
 }

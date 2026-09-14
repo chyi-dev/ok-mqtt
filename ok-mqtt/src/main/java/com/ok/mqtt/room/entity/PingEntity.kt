@@ -1,0 +1,15 @@
+package com.ok.mqtt.room.entity
+
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "PingEntity", indices = [Index(value = ["timestamp"])])
+data class PingEntity(
+    @PrimaryKey val timestamp: Long,
+    var clientId: String?,
+    var serverURI: String?,
+    val success: Boolean,
+    var message: String? = null
+)
+
